@@ -1,0 +1,556 @@
+# %% [markdown]
+# ## Business Problem Statement
+
+# %% [markdown]
+# 
+# Context:
+# An online retailer in the UK wants to understand its customers better to increase sales, retention, and loyalty. Currently, there is no clear picture of who the high-value or repeat customers are, or which segments are at risk of churn.
+# 
+# Problem:
+# Without insights into customer behavior, purchasing patterns, and revenue contribution, marketing efforts are inefficient, and growth opportunities are being missed.
+# 
+# Objectives:
+# 
+# Identify top customers by purchase value and frequency.
+# Track monthly trends of new vs returning customers.
+# Segment customers using RFM (Recency, Frequency, Monetary) to target loyalty programs and retention strategies.
+# Understand revenue concentration, including contribution from top 20% of customers.
+
+# %%
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns 
+%matplotlib inline
+import warnings 
+warnings.filterwarnings('ignore')
+pd.options.display.float_format = '{:,.2f}'.format
+
+# %%
+data_frame = pd.read_csv('D:\Data\projects\Online_Retail_UKE-commerce_2\data_set\Ecommerce.csv' ,encoding = 'latin-1' ,dtype = {'CustomerID':'object'} )
+
+data_frame
+
+# %%
+data_frame.info()
+
+# %%
+data = data_frame.copy()
+
+# %% [markdown]
+# ## Clenaing the data
+
+# %%
+data.columns = ['Invoice_No', 'Stock_Code', 'Description', 'Quantity', 'Invoice_Date','Unit_Price', 'Customer_ID', 'Country']
+data.columns = data.columns.str.lower()
+
+# %%
+data['ivoice_data'] = pd.to_datetime(data['invoice_date'])
+data['customer_id'] = data['customer_id'].astype('object')
+
+# %%
+data.info()
+
+# %%
+data.describe().round(0)
+
+# %%
+data.describe(include= 'object')
+
+# %%
+data.isnull().sum()
+
+# %%
+data.duplicated().sum()
+
+# %%
+data = data.drop_duplicates()
+
+# %%
+data.duplicated().sum()
+
+# %%
+only_digit = data['stock_code'].str.match(r'^[A-Za-z\d]+$')
+
+only_one_digit = data['stock_code'].str.count(r'\d') <=1
+
+#data[~( data['stock_code'].str.match(r'^[A-Za-z\d]+$'))]
+#data[( data['stock_code'].str.count(r'\d') <=1)]
+
+result = data[(only_one_digit) & (only_digit)]
+result['stock_code'].unique()
+
+# %%
+resukt = result[['stock_code' , 'description']].drop_duplicates()
+
+# %%
+print(result['description'].to_list())
+print(result['stock_code'].to_list())
+
+# %%
+non_product = ['AMAZONFEE', 'B', 'C2',  'DOT', 'M', 'POST', 'S', 'm']
+non_product_desc = ['AMAZON FEE', 'Adjust bad debt', 'CARRIAGE', np.nan,  'DOTCOM POSTAGE',  'POSTAGE', 'SAMPLES', 'Manual']
+
+# %%
+data =data[(~data['stock_code'].isin(non_product)) &  (~data['description'].isin(non_product_desc))].reset_index()
+
+# %%
+data['Month'] = data['ivoice_data'].dt.to_period('M').dt.to_timestamp()
+data['total_sale'] =round( data['quantity'] * data['unit_price'] , 2)
+data['is_return'] = data['quantity'] < 0
+
+data_clean = data[(data['quantity'] > 0) & (data['unit_price'] >0)]
+
+# %%
+data_clean.info()
+
+# %%
+data_clean[['invoice_no' , 'stock_code', 'ivoice_data']].duplicated().sum()
+
+# %%
+data_clean_group = data_clean.groupby(['invoice_no', 'stock_code'] ,as_index= False ).agg(
+    quantity = ('quantity' ,'sum'),
+    total_sale = ('total_sale' ,'sum'),
+    unit_price = ('unit_price' , 'first'),
+    description = ('description' , 'first'),
+    invoice_date = ('invoice_date' , 'first'),
+    customer_id = ('customer_id'  ,'first'),
+    country = ('country' , 'first')
+)
+data_clean_group
+
+# %%
+data_clean_group[['stock_code', 'invoice_date' , 'invoice_no']].duplicated().sum()
+
+# %%
+data_clean_group['invoice_date']  = pd.to_datetime(data_clean_group['invoice_date'] )
+data_clean_group['month'] = data_clean_group['invoice_date'].dt.to_period("M").dt.to_timestamp()
+
+# %%
+print(data_clean_group['invoice_date'].min())
+print(data_clean_group['invoice_date'].max())
+
+# %%
+data_known = data_clean_group[data_clean_group['customer_id'].notna()]
+data_known = data_known[data_known['quantity'] >0]
+data_known
+
+# %% [markdown]
+# #### 1. How many unique customers made purchases during the observation period?
+
+# %%
+unique_customer = data_known['customer_id'].nunique()
+unique_customer
+
+# %% [markdown]
+# #### 2. How Many active customers in every months  ?
+
+# %%
+monthly_active_customers = (
+    data_known
+    .groupby('month' )['customer_id']
+    .nunique()
+)
+monthly_active_customers
+
+# %%
+plt.figure(figsize=(10,6))
+
+sns.lineplot(
+    x=monthly_active_customers.index.strftime('%b %Y'),
+    y=monthly_active_customers.values,
+    marker='o'
+)
+
+plt.title("Monthly Active Customers", fontsize=14, weight="bold")
+plt.xlabel("Month")
+plt.ylabel("Number of Customers")
+
+plt.xticks(rotation=45)
+sns.despine()
+
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# The number of customers shows an overall increasing trend throughout the year. However, temporary drops are observed in April and August, before reaching a strong peak in November, indicating possible seasonal purchasing behavior.
+
+# %% [markdown]
+# 3️⃣ Monthly trend of new vs returning customers
+
+# %%
+first_purchase = (
+    data_known
+    .groupby('customer_id')['month']
+    .min()
+)
+first_purchase
+
+# %%
+data_known['customer_type'] = data_known.apply(
+    lambda x: 'New' if x['month'] == first_purchase[x['customer_id']]
+    else 'Returning',
+    axis=1
+)
+
+# %%
+customer_type_monthly = (
+    data_known
+    .groupby(['month','customer_type'])['customer_id']
+    .nunique()
+    .unstack()
+)
+customer_type_monthly
+
+# %%
+# Normalize to percentages
+customer_type_percent = customer_type_monthly.div(customer_type_monthly.sum(axis=1), axis=0) * 100
+
+# Plot
+ax = customer_type_percent.plot(
+    kind='bar',
+    stacked=True,
+    figsize=(12,6),
+    colormap='tab20',
+    width=0.8
+)
+
+# Titles and labels
+plt.title('Customer Type Distribution by Month (%)', fontsize=14, weight='bold')
+plt.xlabel('Month')
+plt.xticks(rotation=45)
+plt.ylabel('Percentage (%)')
+
+# Add percentage labels in dark color
+for i, month in enumerate(customer_type_percent.index):
+    cumulative = 0
+    for cust_type in customer_type_percent.columns:
+        value = customer_type_percent.loc[month, cust_type]
+        if value > 0:  # only label segments with >0%
+            ax.text(
+                i, 
+                cumulative + value/2,  # middle of the segment
+                f'{value:.1f}%', 
+                ha='center', 
+                va='center', 
+                fontsize=9,
+                color='black'  # dark color for text
+            )
+            cumulative += value
+
+# Move legend outside
+plt.legend(title='Customer Type', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# he share of new customers relative to returning customers gradually increased over the months, reaching around 20% in November, which indicates growing customer acquisition over time.
+
+# %% [markdown]
+# 4️⃣ Countries with highest number of customers
+
+# %%
+customers_by_country = (
+    data_known
+    .groupby('country')['customer_id']
+    .nunique()
+    .sort_values(ascending=False)
+    .head(5)
+)
+customers_by_country
+
+# %%
+plt.figure(figsize=(8,5))
+sns.barplot(
+    x=customers_by_country.values, 
+    y=customers_by_country.index, 
+    palette='viridis'
+)
+
+plt.title('Top 5 Countries by Unique Customers', fontsize=14, weight='bold')
+plt.xlabel('Number of Customers')
+plt.ylabel('Country')
+
+# Add value labels
+for i, v in enumerate(customers_by_country.values):
+    plt.text(v + 10, i, str(v), va='center')
+
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# Almost all customers are located in the United Kingdom
+
+# %% [markdown]
+# 5️⃣ Top customers by total purchase value
+
+# %%
+top_customers_value = (
+    data_known
+    .groupby('customer_id')['total_sale']
+    .sum()
+    .sort_values(ascending=False)
+    .head(10)
+)
+top_customers_value
+
+# %%
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.figure(figsize=(10,6))
+sns.barplot(
+    x=top_customers_value.values,
+    y=top_customers_value.index.astype(str),  # in case customer_id is numeric
+    palette='magma'
+)
+
+plt.title('Top 10 Customers by Total Sales', fontsize=14, weight='bold')
+plt.xlabel('Total Sales')
+plt.ylabel('Customer ID')
+
+# Add value labels
+for i, v in enumerate(top_customers_value.values):
+    plt.text(v + 0.01*v, i, f'{v:,.2f}', va='center')
+
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# 6️⃣ Most frequent customers (by number of orders)
+
+# %%
+top_customers_orders = (
+    data_known
+    .groupby('customer_id')['invoice_no']
+    .nunique()
+    .sort_values(ascending=False)
+    .head(10)
+)
+top_customers_orders
+
+# %%
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Plot horizontal bar chart
+top_customers_orders.plot(
+    kind='barh',
+    figsize=(10,6),
+    color=sns.color_palette("coolwarm", len(top_customers_orders))  # nicer colors
+)
+
+plt.title("Top Customers by Order Frequency", fontsize=14, weight='bold')
+plt.xlabel("Number of Orders")
+plt.ylabel("Customer ID")
+
+# Invert y-axis so the top customer appears at the top
+plt.gca().invert_yaxis()
+
+# Add value labels
+for i, v in enumerate(top_customers_orders.values):
+    plt.text(v + 0.01*v, i, str(v), va='center', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# 
+
+# %% [markdown]
+# 7️⃣ Distribution of customer purchase frequency
+
+# %%
+customer_orders_distribution = (
+    data_known
+    .groupby('customer_id')['invoice_no']
+    .nunique()
+)
+customer_orders_distribution
+
+# %%
+plt.figure(figsize=(10,6))
+
+sns.histplot(customer_orders_distribution, bins=50)
+
+plt.title("Customer Order Frequency Distribution")
+plt.xlabel("Number of Orders")
+
+plt.show()
+
+# %% [markdown]
+# The majority of customers placed between 1 and 5 orders, with the overall number of orders ranging from 1 to 20. However, customers who placed more than 9 orders represent only a small segment, indicating that high-frequency purchasing behavior is relatively rare.
+
+# %% [markdown]
+# RFM
+
+# %% [markdown]
+#  Step 1: Calculate RFM Metrics
+
+# %%
+data_known.columns
+
+# %%
+#data_known['order_date'] = pd.to_datetime(orders['order_date'])
+current_date = data_known['invoice_date'].max()
+
+rfm = data_known.groupby('customer_id').agg({
+    'invoice_date': lambda x: (current_date - x.max()).days,
+    'invoice_no': 'count',
+    'total_sale': ['sum', 'mean']
+})
+
+rfm.columns = ['recency_days', 'frequency', 'monetary_value', 'avg_order_value']
+rfm = rfm.reset_index()
+print(rfm.sort_values('monetary_value', ascending=False).head())
+
+# %% [markdown]
+# Step 2: Assign RFM Scores (1-4 scale)
+
+# %%
+rfm['r_score'] = pd.qcut(rfm['recency_days'], q=4, labels=[4, 3, 2, 1])
+rfm['f_score'] = pd.qcut(rfm['frequency'].rank(method='first'), q=4, labels=[1, 2, 3, 4])
+rfm['m_score'] = pd.qcut(rfm['monetary_value'].rank(method='first'), q=4, labels=[1, 2, 3, 4])
+
+rfm['r_score'] = rfm['r_score'].astype(int)
+rfm['f_score'] = rfm['f_score'].astype(int)
+rfm['m_score'] = rfm['m_score'].astype(int)
+rfm['rfm_total_score'] = rfm['r_score'] + rfm['f_score'] + rfm['m_score']
+
+print(rfm[['customer_id', 'r_score', 'f_score', 'm_score', 'rfm_total_score']]
+      .sort_values('rfm_total_score', ascending=False).head())
+
+# %% [markdown]
+#  Step 3: Create Customer Segments
+# 
+
+# %%
+def segment_customer(row):
+    r, f, m = row['r_score'], row['f_score'], row['m_score']
+
+    if r >= 3 and f >= 3 and m >= 3:
+        return 'Champions'
+    elif r >= 3 and f >= 2:
+        return 'Loyal Customers'
+    elif r >= 3 and f == 1:
+        return 'Promising'
+    elif r == 2 and f >= 2:
+        return 'Potential Loyalists'
+    elif r == 2 and f == 1:
+        return 'Needs Attention'
+    elif r == 1 and f >= 3:
+        return 'At Risk'
+    elif r == 1 and f == 2:
+        return 'Hibernating'
+    else:
+        return 'Lost'
+
+rfm['customer_segment'] = rfm.apply(segment_customer, axis=1)
+print(rfm[['customer_id', 'r_score', 'f_score', 'm_score', 'customer_segment']].head(10))
+
+# %% [markdown]
+# Step 4: Segment Summary Statistics
+
+# %%
+
+segment_summary = rfm.groupby('customer_segment').agg({
+    'customer_id': 'count',
+    'monetary_value': ['sum', 'mean']
+}).round(2)
+
+segment_summary.columns = ['customer_count', 'total_revenue', 'avg_customer_value']
+segment_summary['pct_of_customers'] = (segment_summary['customer_count'] /
+                                        segment_summary['customer_count'].sum() * 100).round(2)
+segment_summary = segment_summary.sort_values('total_revenue', ascending=False)
+print(segment_summary)
+
+# Visualization
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+segment_summary['customer_count'].plot(kind='bar', color='steelblue')
+plt.title('Customer Count by Segment')
+plt.ylabel('Count')
+plt.xticks(rotation=45)
+
+plt.subplot(1, 2, 2)
+segment_summary['total_revenue'].plot(kind='bar', color='green')
+plt.title('Revenue by Segment')
+plt.ylabel('Revenue ($)')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+# %%
+fig, ax1 = plt.subplots(figsize=(10,6))
+
+ax2 = ax1.twinx()
+segment_summary['customer_count'].plot(kind='bar', ax=ax1, color='steelblue', width=0.4, position=0)
+segment_summary['total_revenue'].plot(kind='line', ax=ax2, color='green', marker='o', linewidth=2)
+
+ax1.set_xlabel('Customer Segment')
+ax1.set_ylabel('Customer Count', color='steelblue')
+ax2.set_ylabel('Total Revenue ($)', color='green')
+plt.title('Customer Count and Revenue by Segment')
+ax1.set_xticklabels(segment_summary.index, rotation=45)
+plt.show()
+
+# %% [markdown]
+# The Champions segment represents the largest and most valuable customer group, contributing the highest revenue share. The Potential Loyalists segment also includes a large number of customers and offers strong opportunities for future growth if properly targeted. In contrast, the Lost segment contains many customers but generates relatively low revenue, highlighting customer churn and the need for re-engagement strategies
+
+# %% [markdown]
+# Revenue from Top 20% Customers
+
+# %%
+customer_sales = (
+    data_raw_analysis
+    .groupby('customer_id')['total_sale']
+    .sum()
+    .sort_values(ascending=False)
+)
+
+top_20 = int(len(customer_sales) * 0.20)
+
+top_20_sales = customer_sales.head(top_20).sum()
+
+total_sales = customer_sales.sum()
+
+percentage = round((top_20_sales / total_sales) * 100 , 1)
+
+percentage
+
+# %%
+import matplotlib.pyplot as plt
+
+labels = ['Top 20% Customers', 'Other 80% Customers']
+values = [top_20_sales, total_sales - top_20_sales]
+
+colors = ['#1f3b5f', '#a8c6ea']  
+
+plt.figure(figsize=(7,7))
+plt.pie(
+    values,
+    labels=labels,
+    colors=colors,
+    autopct=lambda p: f'{p:.1f}%' if p > 0 else '', 
+    pctdistance=0.6, 
+    startangle=90,
+    wedgeprops={'edgecolor': 'white', 'linewidth': 1.2},
+    textprops={'color': 'white', 'weight': 'bold', 'fontsize': 12}  # اللون أبيض
+)
+plt.title('Revenue Contribution: Top 20% Customers vs Others', fontsize=14, weight='bold')
+plt.show()
+
+# %% [markdown]
+# Around 74% of total revenue comes from the top 20% of customers, highlighting a clear customer value concentration and emphasizing the importance of retaining and targeting high-value customers.
+
+# %% [markdown]
+# 
+
+# %% [markdown]
+# تلخصيا البلد المسيطر هي اللمك له متحده اما اقترح انونقوم ب التركيز علهيفقط  , مهدلات التحويل من زون جدي ل دائم كبيةوممتاز اقتر ان نكمل ب حملات مستخمة .
+#  هناك تباني ب عدد الاشخاص الكثر طلبا والشخصا الكثر شواء مما يدل ع وجود توع وهو امر ممتاز 
+#  من الزبون  هناك عدد الطبات الكبر ب من طلب ل خسمه  يجب اقتراح خططل زياده عدد الطبات 
+#  ب خصوص الزبائن ال شايمون هن المثر طبا والكثر شا ءاقتراح انشاء حملات ولاء خاص بهم تحفزهم ع شارء المزيد وانشاء حولا ل potintia lolay  لانهم ايضا واعدون 
+
+
