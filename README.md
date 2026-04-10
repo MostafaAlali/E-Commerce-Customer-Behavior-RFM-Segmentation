@@ -59,6 +59,7 @@ Final analytical dataset includes:
 📊 *Returning customers accounted for over **80% of total activity in November**, while new customer acquisition stabilized at **19.4%**.*
 
 This indicates strong loyalty formation and improving revenue stability through repeat purchasing behavior.
+
 ![image alt](https://github.com/MostafaAlali/E-Commerce-Customer-Behavior-RFM-Segmentation/blob/main/images/Retention%20%26%20Acquisition%20Trends.png)
 
 ---
@@ -80,6 +81,7 @@ International expansion represents a **long-term growth opportunity**, while the
 Meanwhile:
 
 **Potential Loyalists** represent the strongest conversion opportunity into high-value repeat customers.
+
 ![image alt](https://github.com/MostafaAlali/E-Commerce-Customer-Behavior-RFM-Segmentation/blob/main/images/RFM%20Customer%20Segmentation.png)
 
 ---
