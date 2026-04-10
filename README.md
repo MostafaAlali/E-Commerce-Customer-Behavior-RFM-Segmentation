@@ -68,6 +68,7 @@ This indicates strong loyalty formation and improving revenue stability through 
 📊 *The United Kingdom dominates overall market share and purchasing activity.*
 
 International expansion represents a **long-term growth opportunity**, while the primary short-term strategy should focus on optimizing the UK customer lifecycle.
+
 ![image alt](https://github.com/MostafaAlali/E-Commerce-Customer-Behavior-RFM-Segmentation/blob/main/images/Geographical%20Concentration.png)
 
 ---
